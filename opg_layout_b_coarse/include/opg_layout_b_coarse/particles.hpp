@@ -43,6 +43,20 @@ namespace opg::layout_b_coarse {
 
 using namespace opg::common;
 
+// Zero-overhead storage block for compile-time-sized optional arrays.
+template<int N>
+struct FieldArray {
+    real_t data[N > 0 ? N : 1];
+    constexpr real_t& operator[](int i) noexcept { return data[i]; }
+    constexpr const real_t& operator[](int i) const noexcept { return data[i]; }
+    constexpr int size() const noexcept { return N; }
+};
+
+template<>
+struct FieldArray<0> {
+    constexpr int size() const noexcept { return 0; }
+};
+
 // =============================================================================
 // PCoreB — hot core fields (always present, not templated)
 // =============================================================================
@@ -155,7 +169,8 @@ OPG_ASSERT_PARTICLE_COMPONENT(GasMag);
 
 template<int NMet>
 struct alignas(32) GasMetal {
-    real_t  metals[NMet > 0 ? NMet : 1];
+    static_assert(NMet > 0);
+    real_t  metals[NMet];
     real_t  temperature;
     real_t  mass_res;
     real_t  egy_res;
@@ -164,6 +179,18 @@ struct alignas(32) GasMetal {
     real_t  z_smooth;
     constexpr int num_species() const noexcept { return NMet; }
 };
+
+template<>
+struct alignas(32) GasMetal<0> {
+    real_t  temperature;
+    real_t  mass_res;
+    real_t  egy_res;
+    real_t  x_cold_cloud;
+    real_t  egy_step;
+    real_t  z_smooth;
+    constexpr int num_species() const noexcept { return 0; }
+};
+OPG_ASSERT_PARTICLE_COMPONENT(GasMetal<0>);
 OPG_ASSERT_PARTICLE_COMPONENT(GasMetal<11>);
 
 struct alignas(32) GasSF {
@@ -175,16 +202,49 @@ struct alignas(32) GasSF {
 };
 OPG_ASSERT_PARTICLE_COMPONENT(GasSF);
 
+template<int D>
+struct alignas(32) GasMFM {
+    real_t  num_dens;
+    real_t  dhsml_numdens_factor;
+    real_t  dist_ngb_sqd_max;
+    real_t  condition_number;
+    static constexpr int NumVar = D + 2;
+    real_t  alpha_slope[NumVar];
+    real_t  internal_energy;
+    real_t  internal_energy_pred;
+    real_t  dt_internal_energy;
+    real_t  max_vel_sqr_ngb;
+    acc3_t  hydro_acc_extra;
+    real_t  dt_entropy_extra;
+};
+OPG_ASSERT_PARTICLE_COMPONENT(GasMFM<3>);
+
+template<int NProton, int NElectron>
+struct alignas(32) GasCR {
+    real_t  cr_p_pressure;
+    real_t  cr_e_pressure;
+    real_t  density_old;
+    [[no_unique_address]] FieldArray<NProton>  cr_p_norm;
+    [[no_unique_address]] FieldArray<NProton>  cr_p_slope;
+    real_t  cr_p_cut;
+    [[no_unique_address]] FieldArray<NElectron> cr_e_norm;
+    [[no_unique_address]] FieldArray<NElectron> cr_e_slope;
+    real_t  cr_e_cut;
+};
+OPG_ASSERT_PARTICLE_COMPONENT(GasCR<1,1>);
+
 // =============================================================================
 // GasAllB<Cfg> — all gas fields in one struct
 // =============================================================================
 template<PhysicsConfig Cfg>
 struct alignas(64) GasAllB {
     GasCore core;
-    [[no_unique_address]] optional_field<HasSPH<Cfg>,           GasGrad>                       grad;
-    [[no_unique_address]] optional_field<HasMagnetic<Cfg>,      GasMag>                        mag;
-    [[no_unique_address]] optional_field<HasMetals<Cfg>,        GasMetal<Cfg.n_metal_species>> metals;
-    [[no_unique_address]] optional_field<HasStarFormation<Cfg>, GasSF>                         sfr;
+    [[no_unique_address]] optional_field<HasSPH<Cfg>,             GasGrad>                             grad;
+    [[no_unique_address]] optional_field<HasMagnetic<Cfg>,        GasMag>                              mag;
+    [[no_unique_address]] optional_field<HasThermoChemistry<Cfg>, GasMetal<Cfg.n_metal_species>> metals;
+    [[no_unique_address]] optional_field<HasStarFormation<Cfg>,   GasSF>                               sfr;
+    [[no_unique_address]] optional_field<HasMFM<Cfg>,             GasMFM<3>>                           mfm;
+    [[no_unique_address]] optional_field<HasCosmicRays<Cfg>,      GasCR<Cfg.cr_proton_bins, Cfg.cr_electron_bins>> cr;
 };
 
 // =============================================================================
@@ -193,10 +253,11 @@ struct alignas(64) GasAllB {
 
 template<int NMet>
 struct alignas(32) StarCore {
+    static_assert(NMet > 0);
     real_t  stellar_age;
     real_t  last_chem_time;
     real_t  initial_mass;
-    real_t  metals[NMet > 0 ? NMet : 1];
+    real_t  metals[NMet];
     real_t  weight;
     idx_t   pid;
     int32   chem_time_bin;
@@ -204,6 +265,20 @@ struct alignas(32) StarCore {
     real_t  mean_rho;
     constexpr int num_species() const noexcept { return NMet; }
 };
+
+template<>
+struct alignas(32) StarCore<0> {
+    real_t  stellar_age;
+    real_t  last_chem_time;
+    real_t  initial_mass;
+    real_t  weight;
+    idx_t   pid;
+    int32   chem_time_bin;
+    real_t  mean_hsml;
+    real_t  mean_rho;
+    constexpr int num_species() const noexcept { return 0; }
+};
+OPG_ASSERT_PARTICLE_COMPONENT(StarCore<0>);
 OPG_ASSERT_PARTICLE_COMPONENT(StarCore<11>);
 
 struct alignas(32) StarMeta {

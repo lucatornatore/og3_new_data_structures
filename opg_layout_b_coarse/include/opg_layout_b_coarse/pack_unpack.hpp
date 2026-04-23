@@ -155,7 +155,6 @@ void pack_record(const ParticleContainer<Cfg>& container,
     // arrays through the wire buffer. Struct assignment on trivially-copyable
     // aggregates is permitted by the standard to skip padding; explicit
     // memcpy is the byte-for-byte semantics MPI transfer requires.
-    std::memset(&record, 0, sizeof(ParticleRecord<Cfg>));
     std::memcpy(&record.core, &container.core()[j], sizeof(PCoreB));
     std::memcpy(&record.dyn,  &container.dyn() [j], sizeof(record.dyn));
     std::memcpy(&record.aux,  &container.aux() [j], sizeof(record.aux));
@@ -171,8 +170,10 @@ void pack_record(const ParticleContainer<Cfg>& container,
 
     switch (static_cast<ParticleType>(bare_type)) {
         case ParticleType::Gas: {
-            const auto& src = container.gas_all()[type_idx];
-            std::memcpy(record.typed_payload, &src, sizeof(src));
+            if constexpr (HasHydro<Cfg>) {
+                const auto& src = container.gas_all()[type_idx];
+                std::memcpy(record.typed_payload, &src, sizeof(src));
+            }
             break;
         }
         case ParticleType::Star: {
@@ -220,13 +221,17 @@ bool unpack_record(ParticleContainer<Cfg>& container,
 
     switch (static_cast<ParticleType>(bare_type)) {
         case ParticleType::Gas: {
-            const count_t n = container.n_gas();
-            if (n >= container.capacity().n_max_gas) return false;
-            std::memcpy(&container.gas_all()[n],
-                        record.typed_payload,
-                        sizeof(container.gas_all()[0]));
-            container.linkage()[j_dst].type_idx = static_cast<uint32_t>(n);
-            container.set_count_gas(n + 1);
+            if constexpr (HasHydro<Cfg>) {
+                const count_t n = container.n_gas();
+                if (n >= container.capacity().n_max_gas) return false;
+                std::memcpy(&container.gas_all()[n],
+                            record.typed_payload,
+                            sizeof(container.gas_all()[0]));
+                container.linkage()[j_dst].type_idx = static_cast<uint32_t>(n);
+                container.set_count_gas(n + 1);
+            } else {
+                return false;
+            }
             break;
         }
         case ParticleType::Star: {

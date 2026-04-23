@@ -44,6 +44,7 @@ struct Capacity {
 
 template<PhysicsConfig Cfg>
 class ParticleContainer {
+    static_assert(ValidPhysicsConfig<Cfg>, "PhysicsConfig violates resident-layer invariants");
 public:
     using GasMetalT = GasMetal<Cfg.n_metal_species>;
     using GasMFMT   = GasMFM<3>;
@@ -82,9 +83,10 @@ public:
     GasCore* gas_core() noexcept requires HasHydro<Cfg> { return gas_core_storage_.p; }
     GasGrad* gas_grad() noexcept requires HasSPH<Cfg>           { return gas_grad_storage_.p; }
     GasMag*  gas_mag()  noexcept requires HasMagnetic<Cfg>      { return gas_mag_storage_.p;  }
-    GasMetalT* gas_metal() noexcept requires HasMetalSpecies<Cfg>     { return gas_metal_storage_.p; }
+    GasMetalT* gas_metal() noexcept requires HasThermoChemistry<Cfg> { return gas_metal_storage_.p; }
     GasSF*   gas_sf()   noexcept requires HasStarFormation<Cfg> { return gas_sf_storage_.p;  }
     GasMFMT* gas_mfm()  noexcept requires HasMFM<Cfg>           { return gas_mfm_storage_.p; }
+    GasCRT*  gas_cr()   noexcept requires HasCosmicRays<Cfg>    { return gas_cr_storage_.p; }
 
     // ========== star =========================================================
     StarCoreT* star_core() noexcept requires HasStellarEvolution<Cfg> { return star_core_storage_.p; }
@@ -117,6 +119,46 @@ public:
     ArrayRegistry<>& registry_star()   noexcept { return registry_star_;   }
     ArrayRegistry<>& registry_bh()     noexcept { return registry_bh_;     }
 
+    template<typename Fn>
+    void for_each_common_array(Fn&& fn) noexcept {
+        const count_t N = capacity_.n_max;
+        fn(core_, N, "PCore");
+        fn(dyn_,  N, "PDyn");
+        fn(time_, N, "PTime");
+        fn(meta_, N, "PMeta");
+        if constexpr (HasLeapfrog<Cfg>)        fn(leap_storage_.p, N, "PLeap");
+        if constexpr (HasPotentialOutput<Cfg>) fn(pot_storage_.p,  N, "PPotential");
+    }
+
+    template<typename Fn>
+    void for_each_gas_array(Fn&& fn) noexcept requires HasHydro<Cfg> {
+        const count_t Ng = capacity_.n_max_gas;
+        fn(gas_core_storage_.p, Ng, "GasCore");
+        if constexpr (HasSPH<Cfg>)              fn(gas_grad_storage_.p,  Ng, "GasGrad");
+        if constexpr (HasMagnetic<Cfg>)         fn(gas_mag_storage_.p,   Ng, "GasMag");
+        if constexpr (HasThermoChemistry<Cfg>)  fn(gas_metal_storage_.p, Ng, "GasMetal");
+        if constexpr (HasStarFormation<Cfg>)    fn(gas_sf_storage_.p,    Ng, "GasSF");
+        if constexpr (HasMFM<Cfg>)              fn(gas_mfm_storage_.p,   Ng, "GasMFM");
+        if constexpr (HasCosmicRays<Cfg>)       fn(gas_cr_storage_.p,    Ng, "GasCR");
+    }
+
+    template<typename Fn>
+    void for_each_star_array(Fn&& fn) noexcept requires HasStellarEvolution<Cfg> {
+        const count_t Ns = capacity_.n_max_star;
+        fn(star_core_storage_.p, Ns, "StarCore");
+        fn(star_meta_storage_.p, Ns, "StarMeta");
+    }
+
+    template<typename Fn>
+    void for_each_bh_array(Fn&& fn) noexcept requires HasBlackHoles<Cfg> {
+        const count_t Nb = capacity_.n_max_bh;
+        fn(bh_core_storage_.p,  Nb, "BHCore");
+        fn(bh_env_storage_.p,   Nb, "BHEnv");
+        fn(bh_repos_storage_.p, Nb, "BHRepos");
+        if constexpr (HasBHSpin<Cfg>)      fn(bh_spin_storage_.p,   Nb, "BHSpin");
+        if constexpr (HasBHKineticFB<Cfg>) fn(bh_kin_fb_storage_.p, Nb, "BHKinFB");
+    }
+
     size_t total_bytes_allocated() const noexcept { return bytes_total_; }
 
     static consteval const char* layout_name() noexcept {
@@ -147,16 +189,16 @@ private:
             bytes_total_ += N * sizeof(PPotential);
         }
 
-        // Gas arrays.
         if constexpr (HasHydro<Cfg>) {
             gas_core_storage_.p = a.allocate<GasCore>(Ng, "GasCore");
             bytes_total_ += Ng * sizeof(GasCore);
+            if constexpr (HasSPH<Cfg>)              { gas_grad_storage_.p  = a.allocate<GasGrad> (Ng, "GasGrad");  bytes_total_ += Ng * sizeof(GasGrad); }
+            if constexpr (HasMagnetic<Cfg>)         { gas_mag_storage_.p   = a.allocate<GasMag>  (Ng, "GasMag");   bytes_total_ += Ng * sizeof(GasMag);  }
+            if constexpr (HasThermoChemistry<Cfg>)  { gas_metal_storage_.p = a.allocate<GasMetalT>(Ng, "GasMetal"); bytes_total_ += Ng * sizeof(GasMetalT); }
+            if constexpr (HasStarFormation<Cfg>)    { gas_sf_storage_.p    = a.allocate<GasSF>   (Ng, "GasSF");    bytes_total_ += Ng * sizeof(GasSF);   }
+            if constexpr (HasMFM<Cfg>)              { gas_mfm_storage_.p   = a.allocate<GasMFMT> (Ng, "GasMFM");   bytes_total_ += Ng * sizeof(GasMFMT); }
+            if constexpr (HasCosmicRays<Cfg>)       { gas_cr_storage_.p    = a.allocate<GasCRT>  (Ng, "GasCR");    bytes_total_ += Ng * sizeof(GasCRT);  }
         }
-        if constexpr (HasSPH<Cfg>)           { gas_grad_storage_.p  = a.allocate<GasGrad> (Ng, "GasGrad");  bytes_total_ += Ng * sizeof(GasGrad); }
-        if constexpr (HasMagnetic<Cfg>)      { gas_mag_storage_.p   = a.allocate<GasMag>  (Ng, "GasMag");   bytes_total_ += Ng * sizeof(GasMag);  }
-        if constexpr (HasMetalSpecies<Cfg>)        { gas_metal_storage_.p = a.allocate<GasMetalT>(Ng, "GasMetal"); bytes_total_ += Ng * sizeof(GasMetalT); }
-        if constexpr (HasStarFormation<Cfg>) { gas_sf_storage_.p    = a.allocate<GasSF>   (Ng, "GasSF");    bytes_total_ += Ng * sizeof(GasSF);   }
-        if constexpr (HasMFM<Cfg>)           { gas_mfm_storage_.p   = a.allocate<GasMFMT> (Ng, "GasMFM");   bytes_total_ += Ng * sizeof(GasMFMT); }
 
         // Star arrays.
         if constexpr (HasStellarEvolution<Cfg>) {
@@ -192,41 +234,31 @@ private:
      * reshuffle call site.
      */
     void register_all_arrays() noexcept {
-        const count_t N  = capacity_.n_max;
-        const count_t Ng = capacity_.n_max_gas;
-        const count_t Ns = capacity_.n_max_star;
-        const count_t Nb = capacity_.n_max_bh;
+        registry_common_.clear();
+        for_each_common_array([&](auto* ptr, count_t n, const char* name) {
+            registry_common_.register_array(ptr, n, name);
+        });
 
-        // Common.
-        registry_common_.register_array(core_, N, "PCore");
-        registry_common_.register_array(dyn_,  N, "PDyn");
-        registry_common_.register_array(time_, N, "PTime");
-        registry_common_.register_array(meta_, N, "PMeta");
-        if constexpr (HasLeapfrog<Cfg>)        registry_common_.register_array(leap_storage_.p, N, "PLeap");
-        if constexpr (HasPotentialOutput<Cfg>) registry_common_.register_array(pot_storage_.p,  N, "PPotential");
+        registry_gas_.clear();
+        if constexpr (HasHydro<Cfg>) {
+            for_each_gas_array([&](auto* ptr, count_t n, const char* name) {
+                registry_gas_.register_array(ptr, n, name);
+            });
+        }
 
-        // Gas.
-        if constexpr (HasHydro<Cfg>) registry_gas_.register_array(gas_core_storage_.p, Ng, "GasCore");
-        if constexpr (HasSPH<Cfg>)           registry_gas_.register_array(gas_grad_storage_.p,  Ng, "GasGrad");
-        if constexpr (HasMagnetic<Cfg>)      registry_gas_.register_array(gas_mag_storage_.p,   Ng, "GasMag");
-        if constexpr (HasMetalSpecies<Cfg>)        registry_gas_.register_array(gas_metal_storage_.p, Ng, "GasMetal");
-        if constexpr (HasStarFormation<Cfg>) registry_gas_.register_array(gas_sf_storage_.p,    Ng, "GasSF");
-        if constexpr (HasMFM<Cfg>)           registry_gas_.register_array(gas_mfm_storage_.p,   Ng, "GasMFM");
-
-        // Star.
+        registry_star_.clear();
         if constexpr (HasStellarEvolution<Cfg>) {
-            registry_star_.register_array(star_core_storage_.p, Ns, "StarCore");
-            registry_star_.register_array(star_meta_storage_.p, Ns, "StarMeta");
+            for_each_star_array([&](auto* ptr, count_t n, const char* name) {
+                registry_star_.register_array(ptr, n, name);
+            });
         }
 
-        // BH.
+        registry_bh_.clear();
         if constexpr (HasBlackHoles<Cfg>) {
-            registry_bh_.register_array(bh_core_storage_.p,  Nb, "BHCore");
-            registry_bh_.register_array(bh_env_storage_.p,   Nb, "BHEnv");
-            registry_bh_.register_array(bh_repos_storage_.p, Nb, "BHRepos");
+            for_each_bh_array([&](auto* ptr, count_t n, const char* name) {
+                registry_bh_.register_array(ptr, n, name);
+            });
         }
-        if constexpr (HasBHSpin<Cfg>)       registry_bh_.register_array(bh_spin_storage_.p,   Nb, "BHSpin");
-        if constexpr (HasBHKineticFB<Cfg>)  registry_bh_.register_array(bh_kin_fb_storage_.p, Nb, "BHKinFB");
     }
 
     // -------- state ---------------------------------------------------------
@@ -249,12 +281,13 @@ private:
     [[no_unique_address]] optional_ptr<HasLeapfrog<Cfg>,        PLeap>      leap_storage_;
     [[no_unique_address]] optional_ptr<HasPotentialOutput<Cfg>, PPotential> pot_storage_;
 
-    [[no_unique_address]] optional_ptr<HasHydro<Cfg>, GasCore> gas_core_storage_;
+    [[no_unique_address]] optional_ptr<HasHydro<Cfg>,         GasCore>   gas_core_storage_;
     [[no_unique_address]] optional_ptr<HasSPH<Cfg>,           GasGrad>   gas_grad_storage_;
     [[no_unique_address]] optional_ptr<HasMagnetic<Cfg>,      GasMag>    gas_mag_storage_;
-    [[no_unique_address]] optional_ptr<HasMetalSpecies<Cfg>,        GasMetalT> gas_metal_storage_;
+    [[no_unique_address]] optional_ptr<HasThermoChemistry<Cfg>, GasMetalT> gas_metal_storage_;
     [[no_unique_address]] optional_ptr<HasStarFormation<Cfg>, GasSF>     gas_sf_storage_;
     [[no_unique_address]] optional_ptr<HasMFM<Cfg>,           GasMFMT>   gas_mfm_storage_;
+    [[no_unique_address]] optional_ptr<HasCosmicRays<Cfg>,    GasCRT>    gas_cr_storage_;
 
     [[no_unique_address]] optional_ptr<HasStellarEvolution<Cfg>, StarCoreT> star_core_storage_;
     [[no_unique_address]] optional_ptr<HasStellarEvolution<Cfg>, StarMeta>  star_meta_storage_;

@@ -1,6 +1,6 @@
 /**
  * @file reshuffle.hpp  (layout C)
- * @brief Authoritative reshuffle driver for C — four permutations, four registries.
+ * @brief Authoritative reshuffle driver for C — four permutations, four groups.
  *
  * The central and most error-prone operation in Option C (design note v4 § 8).
  * It must permute, atomically and in lockstep:
@@ -122,19 +122,38 @@ void reshuffle_all(ParticleContainer<Cfg>&  container,
                    void* scratch_star,
                    void* scratch_bh) noexcept
 {
-    container.registry_common().reshuffle_all(
-        bundle.perm_common, bundle.n_common, scratch_common);
+    if (bundle.n_common > 0) {
+        container.for_each_common_array([&](auto* base, count_t elems, const char*) {
+            (void)elems;
+            apply_permutation(base, bundle.perm_common, bundle.n_common, scratch_common);
+        });
+    }
 
-    container.registry_gas().reshuffle_all(
-        bundle.perm_gas, bundle.n_gas, scratch_gas);
+    if constexpr (HasHydro<Cfg>) {
+        if (bundle.n_gas > 0) {
+            container.for_each_gas_array([&](auto* base, count_t elems, const char*) {
+                (void)elems;
+                apply_permutation(base, bundle.perm_gas, bundle.n_gas, scratch_gas);
+            });
+        }
+    }
 
     if constexpr (HasStellarEvolution<Cfg>) {
-        container.registry_star().reshuffle_all(
-            bundle.perm_star, bundle.n_star, scratch_star);
+        if (bundle.n_star > 0) {
+            container.for_each_star_array([&](auto* base, count_t elems, const char*) {
+                (void)elems;
+                apply_permutation(base, bundle.perm_star, bundle.n_star, scratch_star);
+            });
+        }
     }
+
     if constexpr (HasBlackHoles<Cfg>) {
-        container.registry_bh().reshuffle_all(
-            bundle.perm_bh, bundle.n_bh, scratch_bh);
+        if (bundle.n_bh > 0) {
+            container.for_each_bh_array([&](auto* base, count_t elems, const char*) {
+                (void)elems;
+                apply_permutation(base, bundle.perm_bh, bundle.n_bh, scratch_bh);
+            });
+        }
     }
 }
 

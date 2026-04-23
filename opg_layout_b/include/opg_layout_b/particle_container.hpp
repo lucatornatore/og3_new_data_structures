@@ -44,6 +44,7 @@ struct Capacity {
 
 template<PhysicsConfig Cfg>
 class ParticleContainer {
+    static_assert(ValidPhysicsConfig<Cfg>, "PhysicsConfig violates resident-layer invariants");
 public:
     // Compile-time instantiated templated structs (A.7 fix).
     using GasMetalT = GasMetal<Cfg.n_metal_species>;
@@ -81,12 +82,13 @@ public:
     PPotential* potential() noexcept requires HasPotentialOutput<Cfg> { return pot_storage_.p;  }
 
     // ========== gas arrays ====================================================
-    GasCore* gas_core() noexcept                              { return gas_core_; }
+    GasCore* gas_core() noexcept requires HasHydro<Cfg>      { return gas_core_storage_.p; }
     GasGrad* gas_grad() noexcept requires HasSPH<Cfg>         { return gas_grad_storage_.p; }
     GasMag*  gas_mag()  noexcept requires HasMagnetic<Cfg>    { return gas_mag_storage_.p;  }
-    GasMetalT* gas_metal() noexcept requires HasMetalSpecies<Cfg>   { return gas_metal_storage_.p; }
+    GasMetalT* gas_metal() noexcept requires HasThermoChemistry<Cfg> { return gas_metal_storage_.p; }
     GasSF*   gas_sf()   noexcept requires HasStarFormation<Cfg> { return gas_sf_storage_.p; }
     GasMFMT* gas_mfm()  noexcept requires HasMFM<Cfg>         { return gas_mfm_storage_.p; }
+    GasCRT*  gas_cr()   noexcept requires HasCosmicRays<Cfg>  { return gas_cr_storage_.p;  }
 
     // ========== star arrays ===================================================
     StarCoreT* star_core() noexcept requires HasStellarEvolution<Cfg> { return star_core_storage_.p; }
@@ -108,10 +110,26 @@ public:
     void set_counts(count_t np, count_t ng, count_t ns, count_t nb) noexcept {
         n_part_ = np; n_gas_ = ng; n_star_ = ns; n_bh_ = nb;
     }
+    void set_count(count_t np) noexcept      { n_part_ = np; }
+    void set_count_gas(count_t ng) noexcept  { n_gas_ = ng; }
+    void set_count_star(count_t ns) noexcept { n_star_ = ns; }
+    void set_count_bh(count_t nb) noexcept   { n_bh_ = nb; }
 
     const Capacity& capacity() const noexcept { return capacity_; }
 
     ArrayRegistry<>& registry() noexcept { return registry_; }
+
+    template<typename Fn>
+    void for_each_common_array(Fn&& fn) noexcept {
+        const count_t N = capacity_.n_max;
+        fn(core_,    N, "PCore");
+        fn(dyn_,     N, "PDyn");
+        fn(time_,    N, "PTime");
+        fn(meta_,    N, "PMeta");
+        fn(linkage_, N, "PLinkage");
+        if constexpr (HasLeapfrog<Cfg>)        fn(leap_storage_.p, N, "PLeap");
+        if constexpr (HasPotentialOutput<Cfg>) fn(pot_storage_.p,  N, "PPotential");
+    }
 
     size_t total_bytes_allocated() const noexcept { return bytes_total_; }
 
@@ -147,31 +165,34 @@ private:
             bytes_total_ += N * sizeof(PPotential);
         }
 
-        // Gas (core always present; assumes Ng > 0 when hydro is enabled).
         if constexpr (HasHydro<Cfg>) {
             gas_core_storage_.p = a.allocate<GasCore>(Ng, "GasCore");
             bytes_total_ += Ng * sizeof(GasCore);
-        }
 
-        if constexpr (HasSPH<Cfg>) {
-            gas_grad_storage_.p = a.allocate<GasGrad>(Ng, "GasGrad");
-            bytes_total_ += Ng * sizeof(GasGrad);
-        }
-        if constexpr (HasMagnetic<Cfg>) {
-            gas_mag_storage_.p = a.allocate<GasMag>(Ng, "GasMag");
-            bytes_total_ += Ng * sizeof(GasMag);
-        }
-        if constexpr (HasMetalSpecies<Cfg>) {
-            gas_metal_storage_.p = a.allocate<GasMetalT>(Ng, "GasMetal");
-            bytes_total_ += Ng * sizeof(GasMetalT);
-        }
-        if constexpr (HasStarFormation<Cfg>) {
-            gas_sf_storage_.p = a.allocate<GasSF>(Ng, "GasSF");
-            bytes_total_ += Ng * sizeof(GasSF);
-        }
-        if constexpr (HasMFM<Cfg>) {
-            gas_mfm_storage_.p = a.allocate<GasMFMT>(Ng, "GasMFM");
-            bytes_total_ += Ng * sizeof(GasMFMT);
+            if constexpr (HasSPH<Cfg>) {
+                gas_grad_storage_.p = a.allocate<GasGrad>(Ng, "GasGrad");
+                bytes_total_ += Ng * sizeof(GasGrad);
+            }
+            if constexpr (HasMagnetic<Cfg>) {
+                gas_mag_storage_.p = a.allocate<GasMag>(Ng, "GasMag");
+                bytes_total_ += Ng * sizeof(GasMag);
+            }
+            if constexpr (HasThermoChemistry<Cfg>) {
+                gas_metal_storage_.p = a.allocate<GasMetalT>(Ng, "GasMetal");
+                bytes_total_ += Ng * sizeof(GasMetalT);
+            }
+            if constexpr (HasStarFormation<Cfg>) {
+                gas_sf_storage_.p = a.allocate<GasSF>(Ng, "GasSF");
+                bytes_total_ += Ng * sizeof(GasSF);
+            }
+            if constexpr (HasMFM<Cfg>) {
+                gas_mfm_storage_.p = a.allocate<GasMFMT>(Ng, "GasMFM");
+                bytes_total_ += Ng * sizeof(GasMFMT);
+            }
+            if constexpr (HasCosmicRays<Cfg>) {
+                gas_cr_storage_.p = a.allocate<GasCRT>(Ng, "GasCR");
+                bytes_total_ += Ng * sizeof(GasCRT);
+            }
         }
 
         // Star.
@@ -203,19 +224,10 @@ private:
      * Type-specific arrays do not move with the PH-key reshuffle under B'.
      */
     void register_all_arrays() noexcept {
-        const count_t N = capacity_.n_max;
-        registry_.register_array(core_,    N, "PCore");
-        registry_.register_array(dyn_,     N, "PDyn");
-        registry_.register_array(time_,    N, "PTime");
-        registry_.register_array(meta_,    N, "PMeta");
-        registry_.register_array(linkage_, N, "PLinkage");
-
-        if constexpr (HasLeapfrog<Cfg>) {
-            registry_.register_array(leap_storage_.p, N, "PLeap");
-        }
-        if constexpr (HasPotentialOutput<Cfg>) {
-            registry_.register_array(pot_storage_.p, N, "PPotential");
-        }
+        registry_.clear();
+        for_each_common_array([&](auto* ptr, count_t n, const char* name) {
+            registry_.register_array(ptr, n, name);
+        });
     }
 
     MemoryArena* arena_ = nullptr;
@@ -236,13 +248,14 @@ private:
     [[no_unique_address]] optional_ptr<HasLeapfrog<Cfg>,        PLeap>      leap_storage_;
     [[no_unique_address]] optional_ptr<HasPotentialOutput<Cfg>, PPotential> pot_storage_;
 
-    // Gas core is mandatory; optional gas parts are empty when disabled.
-    [[no_unique_address]] optional_ptr<HasHydro<Cfg>, GasCore> gas_core_storage_;
+    // Gas arrays disappear entirely when hydro is disabled.
+    [[no_unique_address]] optional_ptr<HasHydro<Cfg>,         GasCore>   gas_core_storage_;
     [[no_unique_address]] optional_ptr<HasSPH<Cfg>,           GasGrad>   gas_grad_storage_;
     [[no_unique_address]] optional_ptr<HasMagnetic<Cfg>,      GasMag>    gas_mag_storage_;
-    [[no_unique_address]] optional_ptr<HasMetalSpecies<Cfg>,        GasMetalT> gas_metal_storage_;
+    [[no_unique_address]] optional_ptr<HasThermoChemistry<Cfg>, GasMetalT> gas_metal_storage_;
     [[no_unique_address]] optional_ptr<HasStarFormation<Cfg>, GasSF>     gas_sf_storage_;
     [[no_unique_address]] optional_ptr<HasMFM<Cfg>,           GasMFMT>   gas_mfm_storage_;
+    [[no_unique_address]] optional_ptr<HasCosmicRays<Cfg>,    GasCRT>    gas_cr_storage_;
 
     // Star.
     [[no_unique_address]] optional_ptr<HasStellarEvolution<Cfg>, StarCoreT> star_core_storage_;

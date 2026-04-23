@@ -90,9 +90,10 @@ int main() {
     std::printf("\nPermutation     : ");
     for (int i=0;i<5;++i) std::printf("%d ", (int)perm[i]);
 
-    // Scratch buffer: largest element size × number of active particles.
+    // Scratch buffer from the arena temp stack: largest element size × active particles.
+    ArenaCheckpoint scratch_scope(arena);
     const size_t scratch_bytes = container.registry().max_elem_size() * 5;
-    void* scratch = std::malloc(scratch_bytes);
+    void* scratch = arena.allocate_temp_bytes(scratch_bytes, arena.config().alignment).ptr;
 
     reshuffle_common(container, perm, scratch);
 
@@ -100,6 +101,5 @@ int main() {
     for (int i=0;i<5;++i) std::printf("%llu ", (unsigned long long)core[i].key);
     std::printf("\n");
 
-    std::free(scratch);
     return 0;
 }

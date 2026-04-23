@@ -147,13 +147,25 @@ struct PhysicsConfig {
 
     // -------- derived queries: consteval — forbids runtime use --------
 
-    consteval bool has_metals() const noexcept {
-        return n_metal_species > 0;
+    consteval bool has_thermochemistry() const noexcept {
+        return stellar_evolution || star_formation;
+    }
+
+    consteval bool has_element_abundances() const noexcept {
+        return has_thermochemistry() && n_metal_species > 0;
+    }
+
+    consteval bool valid() const noexcept {
+        if (hydro_sph && hydro_mfm) return false;
+        if (stellar_evolution != star_formation) return false;
+        if (n_metal_species < 0) return false;
+        if (cr_proton_bins < 0 || cr_electron_bins < 0) return false;
+        return true;
     }
 
     consteval bool has_type_specific_data(ParticleType pt) const noexcept {
         switch (pt) {
-            case ParticleType::Gas:  return true;
+            case ParticleType::Gas:  return hydro_sph || hydro_mfm;
             case ParticleType::Star: return stellar_evolution;
             case ParticleType::BH:   return black_holes;
             default: return false;
@@ -256,7 +268,13 @@ template<PhysicsConfig Cfg>
 concept HasMagnetizedGas = Cfg.hydro_sph && Cfg.magnetic;
 
 template<PhysicsConfig Cfg>
-concept HasMetalSpecies = (Cfg.n_metal_species > 0);
+concept ValidPhysicsConfig = Cfg.valid();
+
+template<PhysicsConfig Cfg>
+concept HasThermoChemistry = Cfg.has_thermochemistry();
+
+template<PhysicsConfig Cfg>
+concept HasMetals = Cfg.has_element_abundances();
 
 template<PhysicsConfig Cfg>
 concept HasStellarEvolution = Cfg.stellar_evolution;
@@ -274,7 +292,8 @@ template<PhysicsConfig Cfg>
 concept HasBHKineticFB = Cfg.black_holes && Cfg.bh_kinetic_fb;
 
 template<PhysicsConfig Cfg>
-concept HasCosmicRays = Cfg.cosmic_rays;
+concept HasCosmicRays = Cfg.cosmic_rays &&
+    (Cfg.cr_proton_bins > 0 || Cfg.cr_electron_bins > 0);
 
 template<PhysicsConfig Cfg>
 concept HasPotentialOutput = Cfg.output_potential;

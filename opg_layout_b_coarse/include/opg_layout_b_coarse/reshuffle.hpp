@@ -9,8 +9,8 @@
  * permutation, so the cross-indices remain valid.
  *
  * This is B's structural advantage over C: a single permutation of four
- * arrays, declared in exactly one place (the container's common registry).
- * C has to permute the common arrays AND every per-type array in lockstep.
+ * arrays. The registry remains authoritative for group membership and swap_all,
+ * but the hot reshuffle loop itself can be a compile-time direct walk.
  */
 
 #ifndef OPG_LAYOUT_B_COARSE_RESHUFFLE_HPP
@@ -44,7 +44,11 @@ void reshuffle_common(ParticleContainer<Cfg>& container,
                       count_t n,
                       void* scratch) noexcept
 {
-    container.common_registry().reshuffle_all(perm, n, scratch);
+    if (n == 0) return;
+    container.for_each_common_array([&](auto* base, count_t elems, const char*) {
+        (void)elems;
+        apply_permutation(base, perm, n, scratch);
+    });
 }
 
 // =============================================================================
@@ -72,19 +76,11 @@ count_t do_reshuffle_by_key(ParticleContainer<Cfg>& container,
         helpers[i].original_idx = static_cast<idx_t>(i);
     }
 
-    // 2. Sort helpers by key (primary) and type (secondary).
-    //    Type sub-sort is a stable in-leaf grouping used by kernels that
-    //    iterate gas / DM / star / BH separately via leaf.type_offset[].
-    std::sort(helpers, helpers + n,
-              [](const SortHelper& a, const SortHelper& b) {
-                  if (a.key != b.key) return a.key < b.key;
-                  return a.type < b.type;
-              });
+    // 2. Sort helpers with the shared deterministic comparator.
+    PHKeySorter::sort_by_key(helpers, n);
 
     // 3. Extract the permutation.
-    for (count_t i = 0; i < n; ++i) {
-        perm[i] = helpers[i].original_idx;
-    }
+    PHKeySorter::extract_permutation(helpers, n, perm, nullptr);
 
     // 4. Apply to all common arrays via the single registry.
     reshuffle_common(container, perm, n, scratch);

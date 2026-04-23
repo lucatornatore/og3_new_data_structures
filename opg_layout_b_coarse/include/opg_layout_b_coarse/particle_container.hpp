@@ -66,6 +66,7 @@ static_assert(std::is_trivially_copyable_v<BoxLeaf>);
 
 template<PhysicsConfig Cfg>
 class ParticleContainer {
+    static_assert(ValidPhysicsConfig<Cfg>, "PhysicsConfig violates resident-layer invariants");
 public:
     // Compile-time type aliases for templated structs.
     using PDynT    = PDynB<Cfg>;
@@ -98,11 +99,11 @@ public:
     const PLinkageB* linkage() const noexcept { return linkage_; }
 
     // ========== type-specific accessors =======================================
-    // Gas is always allocated (possibly size 0 under GravityOnly). Star and BH
+    // Gas storage vanishes entirely when hydro is disabled. Star and BH
     // accessors are `requires`-constrained — absent from the interface when
     // their physics is disabled. A misuse is a compile-time "no member".
-    GasAllT* gas_all() noexcept requires HasHydro<Cfg> { return gas_all_storage_.p; }
-    const GasAllT* gas_all() const noexcept requires HasHydro<Cfg> { return gas_all_storage_.p; }
+    GasAllT* gas_all() noexcept requires HasHydro<Cfg> { return gas_storage_.p; }
+    const GasAllT* gas_all() const noexcept requires HasHydro<Cfg> { return gas_storage_.p; }
 
     StarAllT* star_all() noexcept requires HasStellarEvolution<Cfg>
         { return star_storage_.p; }
@@ -134,6 +135,15 @@ public:
     ArrayRegistry<>&       common_registry()       noexcept { return reg_common_; }
     const ArrayRegistry<>& common_registry() const noexcept { return reg_common_; }
 
+    template<typename Fn>
+    void for_each_common_array(Fn&& fn) noexcept {
+        const count_t N = capacity_.n_max;
+        fn(core_,    N, "B/core");
+        fn(dyn_,     N, "B/dyn");
+        fn(aux_,     N, "B/aux");
+        fn(linkage_, N, "B/linkage");
+    }
+
     // ========== layout name (diagnostics) =====================================
     consteval static const char* layout_name() noexcept { return "B-coarse"; }
 
@@ -149,7 +159,9 @@ private:
         aux_     = arena_->allocate<PAuxT>(N,     "B/aux");
         linkage_ = arena_->allocate<PLinkageB>(N, "B/linkage");
 
-        if constexpr (HasHydro<Cfg>) gas_all_storage_.p = arena_->allocate<GasAllT>(Ng, "B/gas_all");
+        if constexpr (HasHydro<Cfg>) {
+            gas_storage_.p = arena_->allocate<GasAllT>(Ng, "B/gas_all");
+        }
 
         if constexpr (HasStellarEvolution<Cfg>) {
             star_storage_.p = arena_->allocate<StarAllT>(Nstr, "B/star_all");
@@ -160,12 +172,10 @@ private:
     }
 
     void register_all_arrays() noexcept {
-        // Only common arrays participate in PH-key reshuffle.
-        const count_t N = capacity_.n_max;
-        reg_common_.register_array(core_,    N, "B/core");
-        reg_common_.register_array(dyn_,     N, "B/dyn");
-        reg_common_.register_array(aux_,     N, "B/aux");
-        reg_common_.register_array(linkage_, N, "B/linkage");
+        reg_common_.clear();
+        for_each_common_array([&](auto* ptr, count_t n, const char* name) {
+            reg_common_.register_array(ptr, n, name);
+        });
 
         // Type-specific arrays are deliberately NOT registered in reg_common_.
         // Under B they are reshuffled independently (by a separate
@@ -182,14 +192,15 @@ private:
     count_t n_star_ = 0;
     count_t n_bh_   = 0;
 
-    // Always-allocated arrays
+    // Always-allocated common arrays
     PCoreB*    core_    = nullptr;
     PDynT*     dyn_     = nullptr;
     PAuxT*     aux_     = nullptr;
     PLinkageB* linkage_ = nullptr;
-    GasAllT*   gas_all_ = nullptr;
 
     // Conditionally-allocated arrays — zero bytes when physics disabled.
+    [[no_unique_address]]
+    optional_ptr<HasHydro<Cfg>,           GasAllT>  gas_storage_;
     [[no_unique_address]]
     optional_ptr<HasStellarEvolution<Cfg>, StarAllT> star_storage_;
     [[no_unique_address]]

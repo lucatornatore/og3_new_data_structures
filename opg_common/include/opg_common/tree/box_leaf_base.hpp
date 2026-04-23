@@ -76,6 +76,15 @@ struct BoxLeafBase {
 static_assert(std::is_trivially_copyable_v<BoxLeafBase>);
 static_assert(std::is_standard_layout_v<BoxLeafBase>);
 
+inline void recompute_type_offsets(BoxLeafBase& leaf) noexcept {
+    idx_t offset = 0;
+    for (int t = 0; t < NTYPES; ++t) {
+        leaf.type_offset[t] = offset;
+        offset += leaf.type_count[t];
+    }
+    leaf.common_end = leaf.common_begin + offset;
+}
+
 // =============================================================================
 // SortHelper — the sortable (key, type, origin) triplet
 // =============================================================================

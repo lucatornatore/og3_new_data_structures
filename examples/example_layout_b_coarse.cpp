@@ -211,9 +211,9 @@ int main() {
 
     std::vector<SortHelper> helpers(src.n_part());
     std::vector<idx_t>      perm(src.n_part());
-    // scratch: need at least max_elem_size * n bytes
-    const size_t scratch_bytes = 64 * src.n_part();
-    std::vector<std::byte>  scratch(scratch_bytes);
+    ArenaCheckpoint scratch_scope(arena_src);
+    const size_t scratch_bytes = src.common_registry().max_elem_size() * src.n_part();
+    auto scratch = arena_src.allocate_temp_bytes(scratch_bytes, arena_src.config().alignment, "reshuffle scratch");
 
     // Snapshot of common state BEFORE the shuffle (to verify values re-appear
     // in their new positions after permutation).
@@ -221,7 +221,7 @@ int main() {
     for (count_t i = 0; i < src.n_part(); ++i)
         ids_before[i] = src.aux()[i].id;
 
-    do_reshuffle_by_key(src, helpers.data(), perm.data(), scratch.data());
+    do_reshuffle_by_key(src, helpers.data(), perm.data(), scratch.ptr);
 
     // Verify: src.aux()[i].id should now equal ids_before[perm[i]], for every i.
     bool ok_permutation = true;
@@ -329,8 +329,10 @@ int main() {
                 break;  // DM: no typed payload to compare
         }
     }
-    std::fprintf(stderr, "  fails: core=%d dyn=%d aux=%d typed=%d\n",
-                 fails_core, fails_dyn, fails_aux, fails_typed);
+    if (fails != 0) {
+        std::fprintf(stderr, "  fails: core=%d dyn=%d aux=%d typed=%d\n",
+                     fails_core, fails_dyn, fails_aux, fails_typed);
+    }
 
     // Also verify type-specific counts came out right on the destination.
     std::printf("  dst counts: gas=%lu, star=%lu, bh=%lu (expect %lu, %lu, %lu)\n",

@@ -39,7 +39,11 @@ void reshuffle_common(ParticleContainer<Cfg>& container,
                       void*        scratch) noexcept
 {
     const count_t n = container.count();
-    container.registry().reshuffle_all(perm, n, scratch);
+    if (n == 0) return;
+    container.for_each_common_array([&](auto* base, count_t elems, const char*) {
+        (void)elems;
+        apply_permutation(base, perm, n, scratch);
+    });
 }
 
 /**
