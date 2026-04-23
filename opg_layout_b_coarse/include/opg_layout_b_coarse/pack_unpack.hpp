@@ -155,6 +155,7 @@ void pack_record(const ParticleContainer<Cfg>& container,
     // arrays through the wire buffer. Struct assignment on trivially-copyable
     // aggregates is permitted by the standard to skip padding; explicit
     // memcpy is the byte-for-byte semantics MPI transfer requires.
+    std::memset(&record, 0, sizeof(ParticleRecord<Cfg>));
     std::memcpy(&record.core, &container.core()[j], sizeof(PCoreB));
     std::memcpy(&record.dyn,  &container.dyn() [j], sizeof(record.dyn));
     std::memcpy(&record.aux,  &container.aux() [j], sizeof(record.aux));

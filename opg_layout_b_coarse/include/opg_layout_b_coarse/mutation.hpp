@@ -184,6 +184,13 @@ idx_t mutate_gas_to_star(ParticleContainer<Cfg>& c,
     leaf.type_offset[Star_i] -= 1;   // star sub-range shifts left by 1
     leaf.type_count [Star_i] += 1;
 
+    // Fix: Recompute all offsets to maintain DM/BH bounds
+    idx_t current_offset = 0;
+    for (int t = 0; t < NTYPES; ++t) {
+        leaf.type_offset[t] = current_offset;
+        current_offset += leaf.type_count[t];
+    }
+
     return s;
 }
 

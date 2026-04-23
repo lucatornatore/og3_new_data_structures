@@ -84,7 +84,7 @@ public:
     GasCore* gas_core() noexcept                              { return gas_core_; }
     GasGrad* gas_grad() noexcept requires HasSPH<Cfg>         { return gas_grad_storage_.p; }
     GasMag*  gas_mag()  noexcept requires HasMagnetic<Cfg>    { return gas_mag_storage_.p;  }
-    GasMetalT* gas_metal() noexcept requires HasMetals<Cfg>   { return gas_metal_storage_.p; }
+    GasMetalT* gas_metal() noexcept requires HasMetalSpecies<Cfg>   { return gas_metal_storage_.p; }
     GasSF*   gas_sf()   noexcept requires HasStarFormation<Cfg> { return gas_sf_storage_.p; }
     GasMFMT* gas_mfm()  noexcept requires HasMFM<Cfg>         { return gas_mfm_storage_.p; }
 
@@ -148,8 +148,10 @@ private:
         }
 
         // Gas (core always present; assumes Ng > 0 when hydro is enabled).
-        gas_core_ = a.allocate<GasCore>(Ng, "GasCore");
-        bytes_total_ += Ng * sizeof(GasCore);
+        if constexpr (HasHydro<Cfg>) {
+            gas_core_storage_.p = a.allocate<GasCore>(Ng, "GasCore");
+            bytes_total_ += Ng * sizeof(GasCore);
+        }
 
         if constexpr (HasSPH<Cfg>) {
             gas_grad_storage_.p = a.allocate<GasGrad>(Ng, "GasGrad");
@@ -159,7 +161,7 @@ private:
             gas_mag_storage_.p = a.allocate<GasMag>(Ng, "GasMag");
             bytes_total_ += Ng * sizeof(GasMag);
         }
-        if constexpr (HasMetals<Cfg>) {
+        if constexpr (HasMetalSpecies<Cfg>) {
             gas_metal_storage_.p = a.allocate<GasMetalT>(Ng, "GasMetal");
             bytes_total_ += Ng * sizeof(GasMetalT);
         }
@@ -235,10 +237,10 @@ private:
     [[no_unique_address]] optional_ptr<HasPotentialOutput<Cfg>, PPotential> pot_storage_;
 
     // Gas core is mandatory; optional gas parts are empty when disabled.
-    GasCore* gas_core_ = nullptr;
+    [[no_unique_address]] optional_ptr<HasHydro<Cfg>, GasCore> gas_core_storage_;
     [[no_unique_address]] optional_ptr<HasSPH<Cfg>,           GasGrad>   gas_grad_storage_;
     [[no_unique_address]] optional_ptr<HasMagnetic<Cfg>,      GasMag>    gas_mag_storage_;
-    [[no_unique_address]] optional_ptr<HasMetals<Cfg>,        GasMetalT> gas_metal_storage_;
+    [[no_unique_address]] optional_ptr<HasMetalSpecies<Cfg>,        GasMetalT> gas_metal_storage_;
     [[no_unique_address]] optional_ptr<HasStarFormation<Cfg>, GasSF>     gas_sf_storage_;
     [[no_unique_address]] optional_ptr<HasMFM<Cfg>,           GasMFMT>   gas_mfm_storage_;
 

@@ -1,0 +1,17 @@
+
+1. `ArrayRegistry::reshuffle_all` silently `continue`s when `e.elems < n`, and `register_array` silently no-ops on `count_ >= MaxArrays`. The comments admit both ("caller bug", "for now"). This is the *exact* silent-corruption failure mode that Layout C's positional invariant is most vulnerable to, baked into the shared primitive.
+
+2. `idx_t` is `int32` but `count_t` is `uint64`. `build_helpers`, `extract_permutation`, and the `original_idx` field all `static_cast<idx_t>(i)`. At N > 2³¹ per MPI task this silently wraps. Current scale probably safe, but there's no static_assert or comment.
+
+3. `PDynB` comment claims "64 B with or without leapfrog" as if the optional_field is doing clever work. `alignas(64)` is what's actually forcing the size — the base is \~44 B under mixed precision. The zero-cost optional story is true, but in this specific case the struct size is alignment-dominated, not optional-dominated. Framing issue, not a bug.
+
+4. `implementation_notes.md §11.5` claims `-Wpedantic` catches non-ASCII in comments. It doesn't, in GCC 13 — that's `-Wcomment` territory, or a locale/encoding issue. The advice to stick to ASCII is fine; the attribution to `-Wpedantic` is wrong.
+
+5. `opt_read` returns `T` by value. For `bfield3_t` that's fine. For a hypothetical `opt_read(record.metals, GasMetal<11>{})` it would copy the whole block. Not a bug; a design constraint worth making explicit.
+
+6. `ArenaFillPolicy::None` is the default. Combined with your `memcpy`-based pack/unpack, the bit-for-bit round-trip test in `example_layout_b_coarse` may be passing because freshly-mapped arena pages are kernel-zeroed on Linux — not because the code *guarantees* matching padding across two production hosts. Under `Poison` fill it would almost certainly fail. Worth checking.
+
+7. `example_layout_b_coarse` unconditionally writes the `fails: core=0 dyn=0 aux=0 typed=0` breakdown to **stderr** even when the run is green. Channel confusion, harmless.
+
+8. The `PHKeySorter::sort_by_key` comment in the file still mentions `std::stable_sort` in passing (around the determinism rationale paragraph) although the code itself uses plain `std::sort` + explicit tiebreak. Consistent now in the code; minor doc drift.
+

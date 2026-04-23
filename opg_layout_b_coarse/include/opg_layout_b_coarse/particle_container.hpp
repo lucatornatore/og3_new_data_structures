@@ -101,8 +101,8 @@ public:
     // Gas is always allocated (possibly size 0 under GravityOnly). Star and BH
     // accessors are `requires`-constrained — absent from the interface when
     // their physics is disabled. A misuse is a compile-time "no member".
-    GasAllT* gas_all() noexcept { return gas_all_; }
-    const GasAllT* gas_all() const noexcept { return gas_all_; }
+    GasAllT* gas_all() noexcept requires HasHydro<Cfg> { return gas_all_storage_.p; }
+    const GasAllT* gas_all() const noexcept requires HasHydro<Cfg> { return gas_all_storage_.p; }
 
     StarAllT* star_all() noexcept requires HasStellarEvolution<Cfg>
         { return star_storage_.p; }
@@ -149,7 +149,7 @@ private:
         aux_     = arena_->allocate<PAuxT>(N,     "B/aux");
         linkage_ = arena_->allocate<PLinkageB>(N, "B/linkage");
 
-        gas_all_ = arena_->allocate<GasAllT>(Ng, "B/gas_all");
+        if constexpr (HasHydro<Cfg>) gas_all_storage_.p = arena_->allocate<GasAllT>(Ng, "B/gas_all");
 
         if constexpr (HasStellarEvolution<Cfg>) {
             star_storage_.p = arena_->allocate<StarAllT>(Nstr, "B/star_all");

@@ -79,10 +79,10 @@ public:
     PPotential* potential() noexcept requires HasPotentialOutput<Cfg> { return pot_storage_.p;  }
 
     // ========== gas ==========================================================
-    GasCore* gas_core() noexcept { return gas_core_; }
+    GasCore* gas_core() noexcept requires HasHydro<Cfg> { return gas_core_storage_.p; }
     GasGrad* gas_grad() noexcept requires HasSPH<Cfg>           { return gas_grad_storage_.p; }
     GasMag*  gas_mag()  noexcept requires HasMagnetic<Cfg>      { return gas_mag_storage_.p;  }
-    GasMetalT* gas_metal() noexcept requires HasMetals<Cfg>     { return gas_metal_storage_.p; }
+    GasMetalT* gas_metal() noexcept requires HasMetalSpecies<Cfg>     { return gas_metal_storage_.p; }
     GasSF*   gas_sf()   noexcept requires HasStarFormation<Cfg> { return gas_sf_storage_.p;  }
     GasMFMT* gas_mfm()  noexcept requires HasMFM<Cfg>           { return gas_mfm_storage_.p; }
 
@@ -148,11 +148,13 @@ private:
         }
 
         // Gas arrays.
-        gas_core_ = a.allocate<GasCore>(Ng, "GasCore");
-        bytes_total_ += Ng * sizeof(GasCore);
+        if constexpr (HasHydro<Cfg>) {
+            gas_core_storage_.p = a.allocate<GasCore>(Ng, "GasCore");
+            bytes_total_ += Ng * sizeof(GasCore);
+        }
         if constexpr (HasSPH<Cfg>)           { gas_grad_storage_.p  = a.allocate<GasGrad> (Ng, "GasGrad");  bytes_total_ += Ng * sizeof(GasGrad); }
         if constexpr (HasMagnetic<Cfg>)      { gas_mag_storage_.p   = a.allocate<GasMag>  (Ng, "GasMag");   bytes_total_ += Ng * sizeof(GasMag);  }
-        if constexpr (HasMetals<Cfg>)        { gas_metal_storage_.p = a.allocate<GasMetalT>(Ng, "GasMetal"); bytes_total_ += Ng * sizeof(GasMetalT); }
+        if constexpr (HasMetalSpecies<Cfg>)        { gas_metal_storage_.p = a.allocate<GasMetalT>(Ng, "GasMetal"); bytes_total_ += Ng * sizeof(GasMetalT); }
         if constexpr (HasStarFormation<Cfg>) { gas_sf_storage_.p    = a.allocate<GasSF>   (Ng, "GasSF");    bytes_total_ += Ng * sizeof(GasSF);   }
         if constexpr (HasMFM<Cfg>)           { gas_mfm_storage_.p   = a.allocate<GasMFMT> (Ng, "GasMFM");   bytes_total_ += Ng * sizeof(GasMFMT); }
 
@@ -204,10 +206,10 @@ private:
         if constexpr (HasPotentialOutput<Cfg>) registry_common_.register_array(pot_storage_.p,  N, "PPotential");
 
         // Gas.
-        registry_gas_.register_array(gas_core_, Ng, "GasCore");
+        if constexpr (HasHydro<Cfg>) registry_gas_.register_array(gas_core_storage_.p, Ng, "GasCore");
         if constexpr (HasSPH<Cfg>)           registry_gas_.register_array(gas_grad_storage_.p,  Ng, "GasGrad");
         if constexpr (HasMagnetic<Cfg>)      registry_gas_.register_array(gas_mag_storage_.p,   Ng, "GasMag");
-        if constexpr (HasMetals<Cfg>)        registry_gas_.register_array(gas_metal_storage_.p, Ng, "GasMetal");
+        if constexpr (HasMetalSpecies<Cfg>)        registry_gas_.register_array(gas_metal_storage_.p, Ng, "GasMetal");
         if constexpr (HasStarFormation<Cfg>) registry_gas_.register_array(gas_sf_storage_.p,    Ng, "GasSF");
         if constexpr (HasMFM<Cfg>)           registry_gas_.register_array(gas_mfm_storage_.p,   Ng, "GasMFM");
 
@@ -247,10 +249,10 @@ private:
     [[no_unique_address]] optional_ptr<HasLeapfrog<Cfg>,        PLeap>      leap_storage_;
     [[no_unique_address]] optional_ptr<HasPotentialOutput<Cfg>, PPotential> pot_storage_;
 
-    GasCore* gas_core_ = nullptr;
+    [[no_unique_address]] optional_ptr<HasHydro<Cfg>, GasCore> gas_core_storage_;
     [[no_unique_address]] optional_ptr<HasSPH<Cfg>,           GasGrad>   gas_grad_storage_;
     [[no_unique_address]] optional_ptr<HasMagnetic<Cfg>,      GasMag>    gas_mag_storage_;
-    [[no_unique_address]] optional_ptr<HasMetals<Cfg>,        GasMetalT> gas_metal_storage_;
+    [[no_unique_address]] optional_ptr<HasMetalSpecies<Cfg>,        GasMetalT> gas_metal_storage_;
     [[no_unique_address]] optional_ptr<HasStarFormation<Cfg>, GasSF>     gas_sf_storage_;
     [[no_unique_address]] optional_ptr<HasMFM<Cfg>,           GasMFMT>   gas_mfm_storage_;
 

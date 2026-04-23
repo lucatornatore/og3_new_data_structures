@@ -148,7 +148,7 @@ struct PhysicsConfig {
     // -------- derived queries: consteval — forbids runtime use --------
 
     consteval bool has_metals() const noexcept {
-        return stellar_evolution || (star_formation && n_metal_species > 0);
+        return n_metal_species > 0;
     }
 
     consteval bool has_type_specific_data(ParticleType pt) const noexcept {
@@ -256,7 +256,7 @@ template<PhysicsConfig Cfg>
 concept HasMagnetizedGas = Cfg.hydro_sph && Cfg.magnetic;
 
 template<PhysicsConfig Cfg>
-concept HasMetals = Cfg.has_metals();
+concept HasMetalSpecies = (Cfg.n_metal_species > 0);
 
 template<PhysicsConfig Cfg>
 concept HasStellarEvolution = Cfg.stellar_evolution;

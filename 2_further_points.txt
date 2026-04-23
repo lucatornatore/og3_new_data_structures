@@ -1,0 +1,8 @@
+I have several answers / point to further discuss:
+1)  this is a testbed to make a choice among B, B_coarse and C as final architecture for the resident-storage, the first test will be to adapt the domain-swapper test (you find an existing version, not related to this code base, among the attached files: distribute.h, distribute.c)
+2) a general point: is it possible to use low-level calls that skip the CPU when it is about moving memory?
+3) another general point: I would like to enhance the memory arena so that : (i) you can allocate and de-allocate memory bunches from there ("allocate" in the sense that you use the arena's api to get a pointer and a region of memory in the arena) and (ii) there is also a "stack", because many times we need temporary arrays that then one can forget.
+4) the fact that some structures like gas core or gas_all are always present, even when the conifg says "no hydro" is an error, I want them not to be present
+5) the logic of stellar_evolution is: ON iff star_formation is ON; ON also with n_elements=0, because you may want to get only the energy without the overhead of storing the elements.
+6) swap_all must aboslutely be present: it is imperative that any new block in a article type is correctly handled in automatic without the user (agnostic about the code skeleton) knows how to do that by hands
+7) is there a solution to avoid the remaining run-time overhead? for instance, do the function pointers in the registry loop hampers the compiler optimization of the called function? increasing the compile-time is not a problem, overcomplicating the code maintenance and the API offered to normal developer (thoase that add or modify physical modules) is.
