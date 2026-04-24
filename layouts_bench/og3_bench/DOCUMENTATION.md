@@ -855,3 +855,22 @@ To understand or modify the implementation, read in this order:
 10. bench_partition.c      same-type swap primitive
 11. bench_sizes.c          size/accounting utility
 ```
+
+## v5 partition and box-leaf update
+
+The partition benchmark is no longer a same-type swap primitive. It now starts
+from integer particle positions, derives Peano-Hilbert keys, globally sorts the
+particles, builds box leaves, perturbs positions, recomputes keys, and partitions
+by post-perturbation leaf membership. The code path is in `bench_partition.c`.
+
+`particle_init.[ch]` owns the position generator. It supports plain uniform mode
+and clustered mode. Clustered mode is based on the uploaded generator's intent
+but avoids its OpenMP race pattern by assigning each particle independently from
+thread-local/per-particle RNG streams.
+
+`boxleaves.[ch]` owns the box-leaf builder. The builder is adapted from the
+uploaded `create_boxleaves` implementation but fixes the small-N capacity bug and
+unguarded `pstart+1` boundary risks. Each `boxleaf_t` stores the PH key interval,
+the current common-array `[begin,end)` range, and a gas subrange
+`[gas_begin,gas_end)`. During partitioning, gas particles are placed first inside
+each leaf so hydro-relevant entries remain locally contiguous.

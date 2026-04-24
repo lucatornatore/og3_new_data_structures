@@ -137,3 +137,14 @@ For layout C, this benchmark keeps `type_idx[]` by design, per the current
 experiment choice. Its memory footprint and refresh pass are therefore part of
 C's measured bookkeeping cost.
 
+
+## v5 partition update
+
+The partition benchmark now uses position-driven particle generation and a
+standalone box-leaf builder adapted from the uploaded `create_boxleaves`
+prototype. `particle_init.[ch]` provides plain and clustered 21-bit coordinate
+generation; `boxleaves.[ch]` builds PH-cube leaves from globally PH-sorted keys
+using target occupancy, tolerance, and maximum side length. `bench_partition.c`
+perturbs particle positions, recomputes keys, repartitions particles by their
+new old-leaf membership, and keeps gas contiguous inside each leaf via the
+updated `[gas_begin, gas_end)` descriptors.

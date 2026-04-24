@@ -1121,3 +1121,19 @@ layout_swap_same_type in all four layouts
 bench_partition.c
 then add a new bench_leaf_partition.c rather than overloading the primitive benchmark
 ```
+
+## v5 guided tour: partition path
+
+`bench_partition.c` is now the bottom-up path for leaf maintenance. It calls
+`og3_generate_positions()` to create 21-bit integer coordinates, then
+`og3_keys_from_positions()` to compute PH keys. It sorts globally by key with the
+same radix helper used elsewhere, fills the layout in PH order, and calls
+`boxleaves_build_from_sorted_keys()` to create PH-cube leaves.
+
+After a perturbation, `layout_set_pos()` and `layout_set_key()` update each
+particle in-place through the layout API. The benchmark then classifies each
+particle by `boxleaves_find_leaf()`, builds a gather permutation with two buckets
+per leaf (gas first, non-gas second), applies `layout_reshuffle_full()`, and
+updates the leaf descriptors with `boxleaves_update_ranges_from_counts()`. The
+verification pass checks that leaves are contiguous and that the gas subrange of
+each leaf contains only gas.

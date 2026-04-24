@@ -1,0 +1,6 @@
+cc -std=gnu11 -O0 -g -Wall -Wextra -fno-strict-aliasing -c bench_common.c -o bench_common.o
+cc -std=gnu11 -O0 -g -Wall -Wextra -fno-strict-aliasing -c hilbert.c -o hilbert.o
+cc -std=gnu11 -O0 -g -Wall -Wextra -fno-strict-aliasing -c particle_init.c -o particle_init.o
+cc -std=gnu11 -O0 -g -Wall -Wextra -fno-strict-aliasing -c boxleaves.c -o boxleaves.o
+make: *** [Makefile:20: particle_init.o] Terminated
+make: *** [Makefile:22: boxleaves.o] Terminated

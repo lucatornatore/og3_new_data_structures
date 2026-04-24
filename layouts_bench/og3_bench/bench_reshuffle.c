@@ -10,6 +10,7 @@
 
 #include "bench_common.h"
 #include "layout_api.h"
+#include "particle_init.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -151,17 +152,20 @@ int main(int argc, char **argv)
            (unsigned long long)c.n_gas, (unsigned long long)c.n_dm,
            (unsigned long long)c.n_star, (unsigned long long)c.n_bh);
 
+    coord3u_t *pos = (coord3u_t *)og3_aligned_alloc((size_t)N * sizeof(coord3u_t));
     pkey_t *keys = (pkey_t *)og3_aligned_alloc((size_t)N * sizeof(pkey_t));
     pkey_t *sorted_keys = (pkey_t *)og3_aligned_alloc((size_t)N * sizeof(pkey_t));
     uint8_t *types = (uint8_t *)og3_aligned_alloc((size_t)N * sizeof(uint8_t));
     ppid_t *ids = (ppid_t *)og3_aligned_alloc((size_t)N * sizeof(ppid_t));
     count_t *perm = (count_t *)og3_aligned_alloc((size_t)N * sizeof(count_t));
-    if (N && (!keys || !sorted_keys || !types || !ids || !perm)) {
+    if (N && (!pos || !keys || !sorted_keys || !types || !ids || !perm)) {
         fprintf(stderr, "OOM\n");
         return 1;
     }
 
-    gen_keys(keys, N, n_cells, 12345ULL);
+    (void)n_cells;
+    og3_generate_positions(pos, N, OG3_POS_PLAIN, 1.0, 12345ULL);
+    og3_keys_from_positions(pos, keys, N);
     assign_types(types, &c, 67890ULL);
     for (count_t p = 0; p < N; ++p) ids[p] = (ppid_t)p;
 
@@ -183,6 +187,7 @@ int main(int argc, char **argv)
     layout_ctx_t *ctx = layout_alloc(&c);
     if (!ctx) { fprintf(stderr, "layout_alloc failed\n"); return 1; }
     TIME_BLOCK("layout_fill", layout_fill(ctx, keys, types, ids));
+    og3_set_layout_positions(ctx, pos, N);
     if (exercise_key_pos_api(ctx, N)) {
         fprintf(stderr, "[verify] key/pos API self-test failed\n");
         layout_free(ctx);
@@ -232,6 +237,6 @@ int main(int argc, char **argv)
            mb_per_s, mb_per_s * 1e-3);
 
     layout_free(ctx);
-    free(perm); free(keys); free(sorted_keys); free(types); free(ids);
+    free(perm); free(pos); free(keys); free(sorted_keys); free(types); free(ids);
     return 0;
 }
