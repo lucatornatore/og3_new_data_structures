@@ -1,0 +1,12 @@
+I want to make some marginal but important changes, related to the partition benchmark.
+1) I want that the particles generation starts from the particles positions, not from generating a number of random PHkeys. It's ok that the positions x,y,z are uint32_t, since in every axis you need to have 21bits avaialable to express the PH position along that axis.
+2) I'm uploading my own implemenation of the boxleaves generation.
+At the very beginning of the main, there is a opemp version of the generation which has a "plain" mode and a "clustered" mode that in turn has a "temperature" parameter that drives how strong the clustering is. It is important that you keep this two possibilities because in reality the particles will be clustering due to the Gravitational attraction - you can import that stuff into this code project (make it a separate helper routine).
+3) scrutinize my implementation of building the boxleaves. The key paramater is the target number of particles per leaf, plus the tolerance, and the maximum size of a leaf (which is needed because when the particles are strongly clustered there might be cases in which a boxleaf is much under/over populated).
+I know there is a bug in the cases in which the particles are "few" (it popped out using 32^3 particles or so in a test), where "few" mean that the target number-of-particles-per-leaf is not negligible with respect to the total.
+
+4) import this boxleaves creation, always keeping it in separate files.
+Note that the end of the boxleaves creation, since the particles are sorted in memory by their PHkey and the boxleaves correspond to PH cubes, all the particles that belong to a given boxleaf are contiguous in memory
+
+5) after all this, let's arrive at the partition benchmark.
+As it is it makes no sense. What must happens is that the particles positions is perturberd along x,y,z (how much is a run-time parameter) and then they must be kept partitioned. That means that if their perturbed coordinates are as such that they do not belong anymore to the original boxleaf, they must be moved in the particles arrays so that they are contiguous to the particles that belong to the boxleaf they belong to after the perturbation
